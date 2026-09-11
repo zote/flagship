@@ -12,7 +12,8 @@ This SDK supports HTTP mode only. Native Workers bindings are exclusive to TypeS
 
 ## Build and install
 
-These are new packages; this contribution does not publish them to nuget.org. Build local packages from this directory:
+The release workflow publishes these packages to nuget.org when the maintainer configures `NUGET_API_KEY`.
+Until the first publication, build local packages from this directory:
 
 ```sh
 dotnet pack Flagship.sln -c Release -o artifacts
@@ -152,8 +153,9 @@ message handler; no account credentials are required and they do not contact the
 
 The private `package.json` participates in the repository's existing Changesets release flow.
 `Directory.Build.props` reads its version directly, so both NuGet packages follow the canonical SDK
-version without an additional release manifest. NuGet publication is not automated in this contribution;
-registry ownership and publishing credentials must be configured before a future publishing workflow.
+version without an additional release manifest. NuGet publication is integrated into the release workflow
+and is skipped successfully while `NUGET_API_KEY` is absent. See [Publishing to nuget.org](PUBLISHING.md)
+for maintainer setup, versioning, retries and troubleshooting.
 
 ## License
 
