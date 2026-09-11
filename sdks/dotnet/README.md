@@ -146,6 +146,7 @@ dotnet pack Flagship.sln -c Release -o artifacts
 ```
 
 `LangVersion` is fixed at `10.0` for every project, including tests and the compiled example.
+Tests use xUnit v3 with the VSTest adapter, and receive the runner cancellation token.
 CI runs tests on both target frameworks and builds both NuGet packages. HTTP tests use an injected
 message handler; no account credentials are required and they do not contact the live Flagship API.
 

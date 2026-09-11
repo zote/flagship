@@ -31,20 +31,25 @@ public sealed class ProviderTests
         });
         using var http = new HttpClient(handler);
         var api = OpenFeatureFactory.CreateIsolated();
-        await api.SetProviderAsync(new FlagshipServerProvider(ClientTests.Options, http));
+        await api.SetProviderAsync(new FlagshipServerProvider(ClientTests.Options, http), TestContext.Current.CancellationToken);
         try
         {
             var client = api.GetClient();
             var context = EvaluationContext.Builder().SetTargetingKey("user-123").Set("plan", "pro").Build();
-            var boolean = await client.GetBooleanDetailsAsync("boolean", false, context);
+            var boolean = await client.GetBooleanDetailsAsync("boolean", false, context,
+                cancellationToken: TestContext.Current.CancellationToken);
             Assert.True(boolean.Value);
             Assert.Equal(Reason.Split, boolean.Reason);
             Assert.Equal("treatment", boolean.Variant);
             Assert.Equal(ErrorType.None, boolean.ErrorType);
-            Assert.Equal("hello", await client.GetStringValueAsync("string", "fallback", context));
-            Assert.Equal(42, await client.GetIntegerValueAsync("integer", 0, context));
-            Assert.Equal(0.25, await client.GetDoubleValueAsync("double", 0, context));
-            var structure = await client.GetObjectValueAsync("object", new Value(), context);
+            Assert.Equal("hello", await client.GetStringValueAsync("string", "fallback", context,
+                cancellationToken: TestContext.Current.CancellationToken));
+            Assert.Equal(42, await client.GetIntegerValueAsync("integer", 0, context,
+                cancellationToken: TestContext.Current.CancellationToken));
+            Assert.Equal(0.25, await client.GetDoubleValueAsync("double", 0, context,
+                cancellationToken: TestContext.Current.CancellationToken));
+            var structure = await client.GetObjectValueAsync("object", new Value(), context,
+                cancellationToken: TestContext.Current.CancellationToken);
             var items = structure.AsStructure!.GetValue("items").AsList!;
             Assert.Equal(1, items[0].AsInteger);
             Assert.True(items[1].AsBoolean);
@@ -67,7 +72,8 @@ public sealed class ProviderTests
         using var handler = new TestHandler((_, _) => Task.FromResult(TestHandler.Json($"{{\"flagKey\":\"flag\",\"value\":{value}}}")));
         using var http = new HttpClient(handler);
         using var provider = new FlagshipServerProvider(ClientTests.Options, http);
-        var result = await provider.ResolveIntegerValueAsync("flag", 7);
+        var result = await provider.ResolveIntegerValueAsync("flag", 7,
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(7, result.Value);
         Assert.Equal(ErrorType.TypeMismatch, result.ErrorType);
         Assert.Equal(Reason.Error, result.Reason);
@@ -79,7 +85,8 @@ public sealed class ProviderTests
         using var handler = new TestHandler((_, _) => Task.FromResult(TestHandler.Json("{\"flagKey\":\"flag\",\"value\":null,\"reason\":\"DISABLED\",\"variant\":\"off\"}")));
         using var http = new HttpClient(handler);
         using var provider = new FlagshipServerProvider(ClientTests.Options, http);
-        var result = await provider.ResolveBooleanValueAsync("flag", true);
+        var result = await provider.ResolveBooleanValueAsync("flag", true,
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(result.Value);
         Assert.Equal(Reason.Disabled, result.Reason);
         Assert.Equal(ErrorType.None, result.ErrorType);
@@ -96,10 +103,11 @@ public sealed class ProviderTests
         using var handler = new TestHandler((_, _) => Task.FromResult(TestHandler.Json(json, (HttpStatusCode)status)));
         using var http = new HttpClient(handler);
         var api = OpenFeatureFactory.CreateIsolated();
-        await api.SetProviderAsync(new FlagshipServerProvider(ClientTests.Options, http));
+        await api.SetProviderAsync(new FlagshipServerProvider(ClientTests.Options, http), TestContext.Current.CancellationToken);
         try
         {
-            var result = await api.GetClient().GetStringDetailsAsync("flag", "fallback");
+            var result = await api.GetClient().GetStringDetailsAsync("flag", "fallback",
+                cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal("fallback", result.Value);
             Assert.Equal(error, result.ErrorType);
             Assert.Equal(Reason.Error, result.Reason);
@@ -114,17 +122,19 @@ public sealed class ProviderTests
         using var http = new HttpClient(handler);
         using var provider = new FlagshipServerProvider(ClientTests.Options, http);
         var context = EvaluationContext.Builder().Set("nested", new Value(Structure.Empty)).Build();
-        var result = await provider.ResolveBooleanValueAsync("flag", false, context);
+        var result = await provider.ResolveBooleanValueAsync("flag", false, context,
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(ErrorType.InvalidContext, result.ErrorType);
-        await provider.ShutdownAsync();
-        Assert.Equal(ErrorType.ProviderNotReady, (await provider.ResolveBooleanValueAsync("flag", false)).ErrorType);
+        await provider.ShutdownAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(ErrorType.ProviderNotReady, (await provider.ResolveBooleanValueAsync("flag", false,
+            cancellationToken: TestContext.Current.CancellationToken)).ErrorType);
         Assert.Equal(0, handler.Calls);
     }
 
     [Fact]
     public async Task ProviderPreservesCallerCancellation()
     {
-        using var cancel = new CancellationTokenSource();
+        using var cancel = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         cancel.Cancel();
         using var provider = new FlagshipServerProvider(ClientTests.Options);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => provider.ResolveBooleanValueAsync("flag", false, cancellationToken: cancel.Token));

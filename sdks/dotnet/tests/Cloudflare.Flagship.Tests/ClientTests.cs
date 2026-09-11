@@ -69,7 +69,7 @@ public sealed class ClientTests
                 ["date"] = new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc),
                 ["missing"] = null,
                 ["flagKey"] = "attacker"
-            });
+            }, TestContext.Current.CancellationToken);
             Assert.True(response.Value.GetBoolean());
             Assert.Equal("on", response.Variant);
             Assert.Empty(http.DefaultRequestHeaders);
@@ -100,7 +100,9 @@ public sealed class ClientTests
         using var handler = new TestHandler((_, _) => Task.FromResult(TestHandler.Json("secret response", (HttpStatusCode)status)));
         using var http = new HttpClient(handler);
         using var client = new FlagshipClient(Options with { Retries = 2 }, http);
-        var error = await Assert.ThrowsAsync<FlagshipException>(() => client.EvaluateAsync("flag"));
+        var error = await Assert.ThrowsAsync<FlagshipException>(
+            () => client.EvaluateAsync("flag",
+            cancellationToken: TestContext.Current.CancellationToken));
         Assert.Equal(code, error.Code);
         Assert.Equal((HttpStatusCode)status, error.StatusCode);
         Assert.DoesNotContain("secret", error.Message);
@@ -119,7 +121,9 @@ public sealed class ClientTests
         using var handler = new TestHandler((_, _) => Task.FromResult(TestHandler.Json(json)));
         using var http = new HttpClient(handler);
         using var client = new FlagshipClient(Options with { Retries = 2 }, http);
-        var error = await Assert.ThrowsAsync<FlagshipException>(() => client.EvaluateAsync("flag"));
+        var error = await Assert.ThrowsAsync<FlagshipException>(
+            () => client.EvaluateAsync("flag",
+            cancellationToken: TestContext.Current.CancellationToken));
         Assert.Equal(FlagshipErrorCode.ParseError, error.Code);
         Assert.Equal(1, handler.Calls);
     }
@@ -132,7 +136,9 @@ public sealed class ClientTests
         using var client = new FlagshipClient(Options, http);
         foreach (var value in new object[] { new[] { 1 }, new { plan = "pro" }, double.NaN, double.PositiveInfinity })
         {
-            var error = await Assert.ThrowsAsync<FlagshipException>(() => client.EvaluateAsync("flag", new Dictionary<string, object?> { ["bad"] = value }));
+            var error = await Assert.ThrowsAsync<FlagshipException>(
+                () => client.EvaluateAsync("flag", new Dictionary<string, object?> { ["bad"] = value },
+                TestContext.Current.CancellationToken));
             Assert.Equal(FlagshipErrorCode.InvalidContext, error.Code);
         }
         Assert.Equal(0, handler.Calls);
@@ -155,7 +161,8 @@ public sealed class ClientTests
             HeadersFactory = _ => Task.FromResult<IReadOnlyDictionary<string, string>>(
                 new Dictionary<string, string> { ["Authorization"] = $"Bearer {++attempts}" })
         }, http);
-        Assert.True((await client.EvaluateAsync("flag")).Value.GetBoolean());
+        Assert.True((await client.EvaluateAsync("flag",
+            cancellationToken: TestContext.Current.CancellationToken)).Value.GetBoolean());
         Assert.Equal(2, handler.Calls);
     }
 
@@ -169,7 +176,9 @@ public sealed class ClientTests
         });
         using var http = new HttpClient(handler);
         using var client = new FlagshipClient(Options with { Timeout = TimeSpan.FromMilliseconds(30), Retries = 1 }, http);
-        var error = await Assert.ThrowsAsync<FlagshipException>(() => client.EvaluateAsync("flag"));
+        var error = await Assert.ThrowsAsync<FlagshipException>(
+            () => client.EvaluateAsync("flag",
+            cancellationToken: TestContext.Current.CancellationToken));
         Assert.Equal(FlagshipErrorCode.TimeoutError, error.Code);
         Assert.Equal(2, handler.Calls);
     }
@@ -177,7 +186,7 @@ public sealed class ClientTests
     [Fact]
     public async Task CallerCancellationIsNeverRetried()
     {
-        using var cancel = new CancellationTokenSource();
+        using var cancel = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         using var handler = new TestHandler(async (_, token) =>
         {
             cancel.Cancel();
@@ -193,7 +202,7 @@ public sealed class ClientTests
     [Fact]
     public async Task CancellationInterruptsRetryDelay()
     {
-        using var cancel = new CancellationTokenSource();
+        using var cancel = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         using var handler = new TestHandler((_, _) =>
         {
             cancel.Cancel();
@@ -214,8 +223,9 @@ public sealed class ClientTests
         client.Dispose();
         client.Dispose();
         Assert.False(handler.Disposed);
-        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.EvaluateAsync("flag"));
-        using var response = await http.GetAsync("https://example.com");
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => client.EvaluateAsync("flag",
+            cancellationToken: TestContext.Current.CancellationToken));
+        using var response = await http.GetAsync("https://example.com", TestContext.Current.CancellationToken);
         Assert.True(response.IsSuccessStatusCode);
     }
 }
